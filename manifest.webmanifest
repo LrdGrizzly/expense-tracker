@@ -1,0 +1,17 @@
+{
+  "name": "Household Expense Tracker",
+  "short_name": "Expenses",
+  "description": "Drive-backed household expense tracker with local encrypted data.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#f8fafc",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
