@@ -95,7 +95,13 @@ const DEFAULT_STATE = {
     currency: "EUR",
     locale: "en-GB",
     googleClientId: "",
+    autoSyncEnabled: true,
+    autoSyncIntervalMinutes: 3,
+    rememberSyncPassword: false,
+    storedSyncPassword: "",
     lastSyncAt: "",
+    lastAutoSyncAt: "",
+    lastSyncError: "",
     lastSnapshotAt: "",
     driveFolderId: "",
     changesFolderId: "",
@@ -110,6 +116,10 @@ let encryptionPassword = "";
 let tokenClient = null;
 let importPreview = null;
 let chartFilter = null;
+let isSyncing = false;
+let autoSyncTimer = null;
+let autoSyncQueued = false;
+let lastAutoSyncMs = 0;
 
 const $ = (selector) => document.querySelector(selector);
 const app = $("#app");
@@ -186,6 +196,9 @@ function ensureDefaults(loaded) {
   merged.deviceId ||= uid("device");
   merged.categoryGroups = loaded?.categoryGroups?.length ? loaded.categoryGroups : GROUPS;
   merged.categories = loaded?.categories?.length ? loaded.categories : CATEGORIES;
+  if (merged.settings.rememberSyncPassword && merged.settings.storedSyncPassword) {
+    encryptionPassword = merged.settings.storedSyncPassword;
+  }
   return merged;
 }
 
@@ -264,6 +277,7 @@ async function recordChange(operations, source = "local") {
   state.pendingChanges.push(change);
   await saveState();
   render();
+  scheduleAutoSync(`change:${source}`);
 }
 
 function mergeChanges(changes) {
@@ -795,21 +809,28 @@ function renderSync() {
     ${pageHeader("Encrypted Drive sync", "Google Drive is the encrypted canonical store; devices keep local caches.", `<button class="button primary" data-action="sync-drive">Sync now</button><button class="button" data-action="create-snapshot">Snapshot</button>`)}
     <section class="panel">
       <div class="panel-head"><h2>Connection</h2><span>OAuth uses the Drive API and the drive.file scope</span></div>
-      <div class="panel-body stack">
+      <form id="sync-settings-form" class="panel-body stack">
         <div class="notice">Financial records are encrypted before upload. Google Drive stores encrypted change and snapshot files, not readable ledger data.</div>
         <div class="form-grid">
-          <div class="field"><label>Google OAuth client ID</label><input id="google-client-id" value="${escapeHtml(state.settings.googleClientId)}" placeholder="Paste web client ID"></div>
+          <div class="field"><label>Google OAuth client ID</label><input id="google-client-id" autocomplete="username" value="${escapeHtml(state.settings.googleClientId)}" placeholder="Paste web client ID"></div>
           <div class="field"><label>Encryption password</label><input id="encryption-password" type="password" autocomplete="current-password" value="${escapeHtml(encryptionPassword)}" placeholder="Required for sync"></div>
           <div class="field"><label>Currency</label><input id="currency" value="${escapeHtml(state.settings.currency)}"></div>
           <div class="field"><label>Locale</label><input id="locale" value="${escapeHtml(state.settings.locale)}"></div>
+          <div class="field"><label>Auto-sync interval</label><input id="auto-sync-interval" type="number" min="1" max="60" step="1" value="${escapeHtml(state.settings.autoSyncIntervalMinutes || 3)}"></div>
+          <label class="field"><span>Automatic foreground sync</span><span class="chip"><input id="auto-sync-enabled" type="checkbox" ${state.settings.autoSyncEnabled ? "checked" : ""}> Enabled</span></label>
+          <label class="field"><span>Silent after reopening</span><span class="chip"><input id="remember-sync-password" type="checkbox" ${state.settings.rememberSyncPassword ? "checked" : ""}> Remember password on this device</span></label>
         </div>
-        <div class="actions"><button class="button" data-action="save-settings">Save settings</button><button class="button" data-action="export-local-snapshot">Download encrypted snapshot</button><label class="button">Import encrypted file<input id="encrypted-import" type="file" accept=".expense-snapshot,.expense-change,application/json" hidden></label></div>
-      </div>
+        <div class="notice">Automatic sync runs when the app opens, comes back into focus, reconnects, after edits/imports, and every few minutes while open. iOS and Google OAuth can still stop true background or permanent silent sync.</div>
+        <div class="actions"><button type="button" class="button" data-action="save-settings">Save settings</button><button type="button" class="button" data-action="export-local-snapshot">Download encrypted snapshot</button><label class="button">Import encrypted file<input id="encrypted-import" type="file" accept=".expense-snapshot,.expense-change,application/json" hidden></label></div>
+      </form>
     </section>
     <section class="sync-state" style="margin-top:14px">
       <div><strong>${state.pendingChanges.length}</strong><br><span class="subtle">Pending local changes</span></div>
       <div><strong>${state.appliedChangeIds.length}</strong><br><span class="subtle">Applied change batches</span></div>
       <div><strong>${state.transactions.filter((tx) => !tx.deletedAt).length}</strong><br><span class="subtle">Active transactions</span></div>
+      <div><strong>${state.settings.lastAutoSyncAt ? new Date(state.settings.lastAutoSyncAt).toLocaleTimeString() : "Never"}</strong><br><span class="subtle">Last automatic sync</span></div>
+      <div><strong>${navigator.onLine ? "Online" : "Offline"}</strong><br><span class="subtle">Network state</span></div>
+      <div><strong>${state.settings.lastSyncError ? "Needs attention" : "OK"}</strong><br><span class="subtle">${escapeHtml(state.settings.lastSyncError || "No sync error")}</span></div>
     </section>
   `);
 }
@@ -932,14 +953,19 @@ function fromB64(value) {
 }
 
 async function exportLocalSnapshot(download = true) {
+  const snapshotState = {
+    ...state,
+    activeTab: "dashboard",
+    pendingChanges: [],
+    settings: {
+      ...state.settings,
+      storedSyncPassword: ""
+    }
+  };
   const payload = {
     type: "snapshot",
     createdAt: new Date().toISOString(),
-    state: {
-      ...state,
-      activeTab: "dashboard",
-      pendingChanges: []
-    }
+    state: snapshotState
   };
   const encrypted = await encryptJson(payload, encryptionPassword);
   if (download) downloadText(`snapshot-${payload.createdAt.replace(/[:.]/g, "-")}.expense-snapshot`, encrypted);
@@ -981,7 +1007,7 @@ async function ensureGis() {
   });
 }
 
-async function getAccessToken() {
+async function getAccessToken({ interactive = true } = {}) {
   if (!state.settings.googleClientId) throw new Error("Add a Google OAuth client ID first.");
   await ensureGis();
   return new Promise((resolve, reject) => {
@@ -996,25 +1022,30 @@ async function getAccessToken() {
         }
       }
     });
-    tokenClient.requestAccessToken({ prompt: accessToken ? "" : "consent" });
+    tokenClient.requestAccessToken({ prompt: accessToken ? "" : interactive ? "consent" : "" });
   });
 }
 
-async function driveRequest(path, options = {}) {
-  const token = accessToken || await getAccessToken();
+async function driveRequest(path, options = {}, authOptions = {}) {
+  const token = accessToken || await getAccessToken(authOptions);
+  const { _retried, ...fetchOptions } = options;
   const response = await fetch(`https://www.googleapis.com/drive/v3/${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(options.headers || {})
+      ...(fetchOptions.headers || {})
     }
   });
+  if (response.status === 401 && !_retried) {
+    accessToken = "";
+    return driveRequest(path, { ...fetchOptions, _retried: true }, authOptions);
+  }
   if (!response.ok) throw new Error(await response.text());
   return response.headers.get("content-type")?.includes("application/json") ? response.json() : response.text();
 }
 
-async function driveUpload(name, parentId, content, mime = "application/json") {
-  const token = accessToken || await getAccessToken();
+async function driveUpload(name, parentId, content, mime = "application/json", authOptions = {}) {
+  const token = accessToken || await getAccessToken(authOptions);
   const boundary = `expense_${Date.now()}`;
   const metadata = { name, parents: parentId ? [parentId] : undefined, mimeType: mime };
   const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n${content}\r\n--${boundary}--`;
@@ -1023,11 +1054,22 @@ async function driveUpload(name, parentId, content, mime = "application/json") {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
     body
   });
+  if (response.status === 401) {
+    accessToken = "";
+    const freshToken = await getAccessToken(authOptions);
+    const retry = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,createdTime", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${freshToken}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+      body
+    });
+    if (!retry.ok) throw new Error(await retry.text());
+    return retry.json();
+  }
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
 
-async function driveCreateFolder(name, parentId = "") {
+async function driveCreateFolder(name, parentId = "", authOptions = {}) {
   const metadata = {
     name,
     mimeType: "application/vnd.google-apps.folder",
@@ -1037,38 +1079,45 @@ async function driveCreateFolder(name, parentId = "") {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(metadata)
-  });
+  }, authOptions);
 }
 
-async function findFiles(query) {
+async function findFiles(query, authOptions = {}) {
   const params = new URLSearchParams({ q: `${query} and trashed=false`, fields: "files(id,name,mimeType,createdTime,parents)" });
-  const result = await driveRequest(`files?${params.toString()}`);
+  const result = await driveRequest(`files?${params.toString()}`, {}, authOptions);
   return result.files || [];
 }
 
-async function ensureDriveFolder(name, parentId = "") {
+async function ensureDriveFolder(name, parentId = "", authOptions = {}) {
   const parentQuery = parentId ? ` and '${parentId}' in parents` : "";
-  const existing = await findFiles(`name='${name.replaceAll("'", "\\'")}' and mimeType='application/vnd.google-apps.folder'${parentQuery}`);
+  const existing = await findFiles(`name='${name.replaceAll("'", "\\'")}' and mimeType='application/vnd.google-apps.folder'${parentQuery}`, authOptions);
   if (existing[0]) return existing[0].id;
-  const created = await driveCreateFolder(name, parentId);
+  const created = await driveCreateFolder(name, parentId, authOptions);
   return created.id;
 }
 
-async function syncDrive() {
+async function syncDrive({ silent = false, interactiveAuth = true, reason = "manual" } = {}) {
   if (!encryptionPassword) throw new Error("Enter the encryption password first.");
-  await getAccessToken();
-  const rootId = await ensureDriveFolder("Expense Tracker");
-  const changesId = await ensureDriveFolder("changes", rootId);
-  const snapshotsId = await ensureDriveFolder("snapshots", rootId);
-  const deviceFolderId = await ensureDriveFolder(state.deviceId, changesId);
+  if (isSyncing) {
+    autoSyncQueued = true;
+    return { merged: 0, uploaded: 0, skipped: true };
+  }
+  isSyncing = true;
+  const authOptions = { interactive: interactiveAuth };
+  try {
+  await getAccessToken(authOptions);
+  const rootId = await ensureDriveFolder("Expense Tracker", "", authOptions);
+  const changesId = await ensureDriveFolder("changes", rootId, authOptions);
+  const snapshotsId = await ensureDriveFolder("snapshots", rootId, authOptions);
+  const deviceFolderId = await ensureDriveFolder(state.deviceId, changesId, authOptions);
   Object.assign(state.settings, { driveFolderId: rootId, changesFolderId: changesId, snapshotsFolderId: snapshotsId });
 
-  const deviceFolders = await findFiles(`'${changesId}' in parents and mimeType='application/vnd.google-apps.folder'`);
-  const fileLists = await Promise.all(deviceFolders.map((folder) => findFiles(`'${folder.id}' in parents`)));
+  const deviceFolders = await findFiles(`'${changesId}' in parents and mimeType='application/vnd.google-apps.folder'`, authOptions);
+  const fileLists = await Promise.all(deviceFolders.map((folder) => findFiles(`'${folder.id}' in parents`, authOptions)));
   const allChangeFiles = fileLists.flat();
   const downloaded = [];
   for (const file of allChangeFiles.filter((item) => item.name.endsWith(".expense-change"))) {
-    const text = await driveRequest(`files/${file.id}?alt=media`);
+    const text = await driveRequest(`files/${file.id}?alt=media`, {}, authOptions);
     const payload = await decryptJson(text, encryptionPassword);
     downloaded.push(...(payload.changes || []));
   }
@@ -1076,20 +1125,30 @@ async function syncDrive() {
   const pending = [...state.pendingChanges];
   if (pending.length) {
     const encrypted = await encryptJson({ type: "change-batch", createdAt: new Date().toISOString(), changes: pending }, encryptionPassword);
-    await driveUpload(`${new Date().toISOString().replace(/[:.]/g, "-")}-${state.deviceId}.expense-change`, deviceFolderId, encrypted);
+    await driveUpload(`${new Date().toISOString().replace(/[:.]/g, "-")}-${state.deviceId}.expense-change`, deviceFolderId, encrypted, "application/json", authOptions);
     state.pendingChanges = [];
   }
   const manifest = JSON.stringify({ version: APP_VERSION, updatedAt: new Date().toISOString(), deviceId: state.deviceId, appliedChanges: state.appliedChangeIds.length });
-  await driveUpload("manifest.json", rootId, manifest);
+  await driveUpload("manifest.json", rootId, manifest, "application/json", authOptions);
   state.settings.lastSyncAt = new Date().toISOString();
+  state.settings.lastSyncError = "";
+  if (reason !== "manual") state.settings.lastAutoSyncAt = state.settings.lastSyncAt;
   await saveState();
   render();
-  alert(`Sync complete. Merged ${merged} change batch${merged === 1 ? "" : "es"} and uploaded ${pending.length}.`);
+  if (!silent) alert(`Sync complete. Merged ${merged} change batch${merged === 1 ? "" : "es"} and uploaded ${pending.length}.`);
+  return { merged, uploaded: pending.length, skipped: false };
+  } finally {
+    isSyncing = false;
+    if (autoSyncQueued) {
+      autoSyncQueued = false;
+      setTimeout(() => runAutoSync("queued"), 1000);
+    }
+  }
 }
 
 async function createDriveSnapshot() {
   if (!encryptionPassword) throw new Error("Enter the encryption password first.");
-  await getAccessToken();
+  await getAccessToken({ interactive: true });
   const rootId = state.settings.driveFolderId || await ensureDriveFolder("Expense Tracker");
   const snapshotsId = state.settings.snapshotsFolderId || await ensureDriveFolder("snapshots", rootId);
   const encrypted = await exportLocalSnapshot(false);
@@ -1097,6 +1156,46 @@ async function createDriveSnapshot() {
   state.settings.lastSnapshotAt = new Date().toISOString();
   await saveState();
   render();
+}
+
+function autoSyncReady() {
+  return Boolean(
+    state.settings.autoSyncEnabled &&
+    state.settings.googleClientId &&
+    encryptionPassword &&
+    navigator.onLine
+  );
+}
+
+function scheduleAutoSync(reason = "scheduled") {
+  if (!autoSyncReady()) return;
+  setTimeout(() => runAutoSync(reason), 1200);
+}
+
+async function runAutoSync(reason = "auto") {
+  if (!autoSyncReady()) return;
+  if (isSyncing) {
+    autoSyncQueued = true;
+    return;
+  }
+  const intervalMs = Math.max(60000, Number(state.settings.autoSyncIntervalMinutes || 3) * 60000);
+  const hasPending = state.pendingChanges.length > 0;
+  const nowMs = Date.now();
+  if (!hasPending && nowMs - lastAutoSyncMs < intervalMs) return;
+  if (hasPending && nowMs - lastAutoSyncMs < 15000) return;
+  lastAutoSyncMs = nowMs;
+  try {
+    await syncDrive({ silent: true, interactiveAuth: false, reason });
+  } catch (error) {
+    state.settings.lastSyncError = error.message || String(error);
+    await saveState();
+    if (state.activeTab === "sync") render();
+  }
+}
+
+function startAutoSync() {
+  if (autoSyncTimer) clearInterval(autoSyncTimer);
+  autoSyncTimer = setInterval(() => runAutoSync("interval"), 60000);
 }
 
 document.addEventListener("click", async (event) => {
@@ -1127,10 +1226,16 @@ document.addEventListener("click", async (event) => {
       state.settings.currency = ($("#currency")?.value.trim() || "EUR").toUpperCase();
       state.settings.locale = $("#locale")?.value.trim() || "en-GB";
       encryptionPassword = $("#encryption-password")?.value || "";
+      state.settings.autoSyncEnabled = Boolean($("#auto-sync-enabled")?.checked);
+      state.settings.autoSyncIntervalMinutes = Math.max(1, Math.min(60, Number($("#auto-sync-interval")?.value || 3)));
+      state.settings.rememberSyncPassword = Boolean($("#remember-sync-password")?.checked);
+      state.settings.storedSyncPassword = state.settings.rememberSyncPassword ? encryptionPassword : "";
       await saveState();
+      startAutoSync();
       render();
+      scheduleAutoSync("settings-saved");
     }
-    if (action === "sync-drive") await syncDrive();
+    if (action === "sync-drive") await syncDrive({ silent: false, interactiveAuth: true, reason: "manual" });
     if (action === "create-snapshot") await createDriveSnapshot();
     if (action === "export-local-snapshot") {
       encryptionPassword = $("#encryption-password")?.value || encryptionPassword;
@@ -1247,6 +1352,13 @@ async function init() {
   await saveState();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
   render();
+  startAutoSync();
+  scheduleAutoSync("startup");
+  window.addEventListener("online", () => scheduleAutoSync("online"));
+  window.addEventListener("focus", () => scheduleAutoSync("focus"));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) scheduleAutoSync("visible");
+  });
   window.seedDemoData = seedDemoData;
 }
 
