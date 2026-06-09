@@ -73,6 +73,20 @@ const KEYWORDS = [
   ["salary", "salary"], ["payroll", "salary"], ["refund", "refunds"], ["transfer", "transfers"]
 ];
 
+const ICONS = {
+  LayoutDashboard: [["rect", { width: "7", height: "9", x: "3", y: "3", rx: "1" }], ["rect", { width: "7", height: "5", x: "14", y: "3", rx: "1" }], ["rect", { width: "7", height: "9", x: "14", y: "12", rx: "1" }], ["rect", { width: "7", height: "5", x: "3", y: "16", rx: "1" }]],
+  ReceiptText: [["path", { d: "M13 16H8" }], ["path", { d: "M14 8H8" }], ["path", { d: "M16 12H8" }], ["path", { d: "M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z" }]],
+  FileSpreadsheet: [["path", { d: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" }], ["path", { d: "M14 2v5a1 1 0 0 0 1 1h5" }], ["path", { d: "M8 13h2" }], ["path", { d: "M14 13h2" }], ["path", { d: "M8 17h2" }], ["path", { d: "M14 17h2" }]],
+  WalletCards: [["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }], ["path", { d: "M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2" }], ["path", { d: "M3 11h3c.8 0 1.6.3 2.1.9l1.1.9c1.6 1.6 4.1 1.6 5.7 0l1.1-.9c.5-.5 1.3-.9 2.1-.9H21" }]],
+  ChartNoAxesCombined: [["path", { d: "M12 16v5" }], ["path", { d: "M16 14v7" }], ["path", { d: "M20 10v11" }], ["path", { d: "m22 3-8.646 8.646a.5.5 0 0 1-.708 0L9.354 8.354a.5.5 0 0 0-.707 0L2 15" }], ["path", { d: "M4 18v3" }], ["path", { d: "M8 14v7" }]],
+  CloudSync: [["path", { d: "m17 18-1.535 1.605a5 5 0 0 1-8-1.5" }], ["path", { d: "M17 22v-4h-4" }], ["path", { d: "M20.996 15.251A4.5 4.5 0 0 0 17.495 8h-1.79a7 7 0 1 0-12.709 5.607" }], ["path", { d: "M7 10v4h4" }], ["path", { d: "m7 14 1.535-1.605a5 5 0 0 1 8 1.5" }]],
+  CircleDollarSign: [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" }], ["path", { d: "M12 18V6" }]],
+  Plus: [["path", { d: "M5 12h14" }], ["path", { d: "M12 5v14" }]],
+  CloudCheck: [["path", { d: "m17 15-5.5 5.5L9 18" }], ["path", { d: "M5.516 16.07A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 3.501 7.327" }]],
+  CloudAlert: [["path", { d: "M12 12v4" }], ["path", { d: "M12 20h.01" }], ["path", { d: "M8.128 16.949A7 7 0 1 1 15.71 8h1.79a1 1 0 0 1 0 9h-1.642" }]],
+  CloudOff: [["path", { d: "M10.94 5.274A7 7 0 0 1 15.71 10h1.79a4.5 4.5 0 0 1 4.222 6.057" }], ["path", { d: "M18.796 18.81A4.5 4.5 0 0 1 17.5 19H9A7 7 0 0 1 5.79 5.78" }], ["path", { d: "m2 2 20 20" }]]
+};
+
 const DEFAULT_STATE = {
   version: APP_VERSION,
   deviceId: "",
@@ -101,6 +115,7 @@ const DEFAULT_STATE = {
     storedSyncPassword: "",
     lastSyncAt: "",
     lastAutoSyncAt: "",
+    lastSyncAttemptAt: "",
     lastSyncError: "",
     lastSnapshotAt: "",
     driveFolderId: "",
@@ -145,6 +160,87 @@ function money(value) {
   }).format(Number(value || 0));
 }
 
+function relativeTime(iso) {
+  if (!iso) return "never";
+  const diff = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(diff)) return "unknown";
+  if (diff < 45000) return "just now";
+  const minutes = Math.round(diff / 60000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+function syncHealth() {
+  if (isSyncing) {
+    return {
+      status: "syncing",
+      label: "Syncing",
+      detail: "Updating Drive now",
+      tone: "info"
+    };
+  }
+  if (!navigator.onLine) {
+    return {
+      status: "offline",
+      label: "Offline",
+      detail: "Changes will wait",
+      tone: "warn"
+    };
+  }
+  if (state.settings.lastSyncError) {
+    return {
+      status: "error",
+      label: "Sync failed",
+      detail: state.settings.lastSyncError,
+      tone: "bad"
+    };
+  }
+  if (state.pendingChanges.length) {
+    return {
+      status: "pending",
+      label: "Pending sync",
+      detail: `${state.pendingChanges.length} local change${state.pendingChanges.length === 1 ? "" : "s"}`,
+      tone: "warn"
+    };
+  }
+  if (!state.settings.lastSyncAt) {
+    return {
+      status: "never",
+      label: "Not synced",
+      detail: "Authorize Drive",
+      tone: "warn"
+    };
+  }
+  const last = new Date(state.settings.lastSyncAt).getTime();
+  const hours = (Date.now() - last) / 3600000;
+  if (hours > 24) {
+    return {
+      status: "stale",
+      label: "Sync stale",
+      detail: `Last synced ${relativeTime(state.settings.lastSyncAt)}`,
+      tone: "warn"
+    };
+  }
+  return {
+    status: "ok",
+    label: "Synced",
+    detail: `Last synced ${relativeTime(state.settings.lastSyncAt)}`,
+    tone: "good"
+  };
+}
+
+function syncStatusMarkup(compact = false) {
+  const health = syncHealth();
+  const healthIcon = health.status === "ok" ? "CloudCheck" : health.status === "offline" ? "CloudOff" : health.status === "error" ? "CloudAlert" : "CloudSync";
+  return `<button class="sync-pill ${health.tone}" data-tab="sync" title="${escapeHtml(health.detail)}">
+    <span class="sync-icon">${iconSvg(healthIcon)}</span><span class="sync-dot"></span>
+    <span><strong>${escapeHtml(health.label)}</strong>${compact ? "" : `<small>${escapeHtml(health.detail)}</small>`}</span>
+  </button>`;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -152,6 +248,15 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function iconSvg(name, className = "") {
+  const nodes = ICONS[name] || ICONS.CircleDollarSign;
+  const body = nodes.map(([tag, attrs]) => {
+    const attrString = Object.entries(attrs).map(([key, value]) => `${key}="${escapeHtml(value)}"`).join(" ");
+    return `<${tag} ${attrString}></${tag}>`;
+  }).join("");
+  return `<svg class="${className}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body}</svg>`;
 }
 
 function normalizeText(value) {
@@ -545,35 +650,38 @@ function barList(items, labelKey = "name", limit = 8) {
 
 function renderShell(content) {
   const nav = [
-    ["dashboard", "D", "Dashboard"],
-    ["transactions", "$", "Transactions"],
-    ["import", "I", "Import"],
-    ["budgets", "B", "Budgets"],
-    ["insights", "A", "Analytics"],
-    ["sync", "S", "Sync"]
+    ["dashboard", "LayoutDashboard", "Dashboard"],
+    ["transactions", "ReceiptText", "Transactions"],
+    ["import", "FileSpreadsheet", "Import"],
+    ["budgets", "WalletCards", "Budgets"],
+    ["insights", "ChartNoAxesCombined", "Analytics"],
+    ["sync", "CloudSync", "Sync"]
   ];
   app.innerHTML = `
     <div class="app">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">$</div>
+          <div class="brand-mark">${iconSvg("CircleDollarSign")}</div>
           <div><strong>Household Ledger</strong><span>Encrypted Drive sync</span></div>
         </div>
-        <nav class="nav">${nav.map(([id, icon, label]) => `<button data-tab="${id}" class="${state.activeTab === id ? "active" : ""}" title="${label}"><span class="icon">${icon}</span>${label}</button>`).join("")}</nav>
-        <div class="sidebar-status">
-          <strong>${state.pendingChanges.length}</strong> pending change${state.pendingChanges.length === 1 ? "" : "s"}<br>
-          Last sync: ${state.settings.lastSyncAt ? new Date(state.settings.lastSyncAt).toLocaleString() : "never"}<br>
-          Device: ${escapeHtml(state.deviceId.slice(-8))}
+        <nav class="nav">${nav.map(([id, icon, label]) => `<button data-tab="${id}" class="${state.activeTab === id ? "active" : ""}" title="${label}" aria-label="${label}"><span class="icon">${iconSvg(icon)}</span>${label}</button>`).join("")}</nav>
+        <div class="sidebar-status ${syncHealth().tone}">
+          ${syncStatusMarkup(false)}
+          <div class="sidebar-sync-meta">
+            Pending: ${state.pendingChanges.length}<br>
+            Attempt: ${relativeTime(state.settings.lastSyncAttemptAt)}<br>
+            Device: ${escapeHtml(state.deviceId.slice(-8))}
+          </div>
         </div>
       </aside>
       <main class="main">${content}</main>
-      <button class="mobile-fab" data-tab="transactions" title="Add transaction">+</button>
+      <button class="mobile-fab" data-tab="transactions" title="Add transaction" aria-label="Add transaction">${iconSvg("Plus")}</button>
     </div>
   `;
 }
 
 function pageHeader(title, subtitle, actions = "") {
-  return `<div class="topbar"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="actions">${actions}</div></div>`;
+  return `<div class="topbar"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="actions">${syncStatusMarkup(true)}${actions}</div></div>`;
 }
 
 function renderDashboard() {
@@ -805,6 +913,7 @@ function renderInsights() {
 }
 
 function renderSync() {
+  const health = syncHealth();
   renderShell(`
     ${pageHeader("Encrypted Drive sync", "Google Drive is the encrypted canonical store; devices keep local caches.", `<button class="button primary" data-action="sync-drive">Sync now</button><button class="button" data-action="create-snapshot">Snapshot</button>`)}
     <section class="panel">
@@ -828,9 +937,10 @@ function renderSync() {
       <div><strong>${state.pendingChanges.length}</strong><br><span class="subtle">Pending local changes</span></div>
       <div><strong>${state.appliedChangeIds.length}</strong><br><span class="subtle">Applied change batches</span></div>
       <div><strong>${state.transactions.filter((tx) => !tx.deletedAt).length}</strong><br><span class="subtle">Active transactions</span></div>
-      <div><strong>${state.settings.lastAutoSyncAt ? new Date(state.settings.lastAutoSyncAt).toLocaleTimeString() : "Never"}</strong><br><span class="subtle">Last automatic sync</span></div>
-      <div><strong>${navigator.onLine ? "Online" : "Offline"}</strong><br><span class="subtle">Network state</span></div>
-      <div><strong>${state.settings.lastSyncError ? "Needs attention" : "OK"}</strong><br><span class="subtle">${escapeHtml(state.settings.lastSyncError || "No sync error")}</span></div>
+      <div class="sync-card-${health.tone}"><strong>${escapeHtml(health.label)}</strong><br><span class="subtle">${escapeHtml(health.detail)}</span></div>
+      <div class="${state.settings.lastAutoSyncAt ? "sync-card-good" : "sync-card-warn"}"><strong>${relativeTime(state.settings.lastAutoSyncAt)}</strong><br><span class="subtle">Last automatic sync</span></div>
+      <div class="${navigator.onLine ? "sync-card-good" : "sync-card-warn"}"><strong>${navigator.onLine ? "Online" : "Offline"}</strong><br><span class="subtle">Network state</span></div>
+      <div class="${state.settings.lastSyncError ? "sync-card-bad" : "sync-card-good"}"><strong>${state.settings.lastSyncError ? "Needs attention" : "No errors"}</strong><br><span class="subtle">${escapeHtml(state.settings.lastSyncError || "Last sync state is clean")}</span></div>
     </section>
   `);
 }
@@ -1103,6 +1213,10 @@ async function syncDrive({ silent = false, interactiveAuth = true, reason = "man
     return { merged: 0, uploaded: 0, skipped: true };
   }
   isSyncing = true;
+  state.settings.lastSyncAttemptAt = new Date().toISOString();
+  state.settings.lastSyncError = "";
+  await saveState();
+  render();
   const authOptions = { interactive: interactiveAuth };
   try {
   await getAccessToken(authOptions);
@@ -1131,14 +1245,21 @@ async function syncDrive({ silent = false, interactiveAuth = true, reason = "man
   const manifest = JSON.stringify({ version: APP_VERSION, updatedAt: new Date().toISOString(), deviceId: state.deviceId, appliedChanges: state.appliedChangeIds.length });
   await driveUpload("manifest.json", rootId, manifest, "application/json", authOptions);
   state.settings.lastSyncAt = new Date().toISOString();
+  state.settings.lastSyncAttemptAt = state.settings.lastSyncAt;
   state.settings.lastSyncError = "";
   if (reason !== "manual") state.settings.lastAutoSyncAt = state.settings.lastSyncAt;
   await saveState();
   render();
   if (!silent) alert(`Sync complete. Merged ${merged} change batch${merged === 1 ? "" : "es"} and uploaded ${pending.length}.`);
   return { merged, uploaded: pending.length, skipped: false };
+  } catch (error) {
+    state.settings.lastSyncError = error.message || String(error);
+    await saveState();
+    render();
+    throw error;
   } finally {
     isSyncing = false;
+    render();
     if (autoSyncQueued) {
       autoSyncQueued = false;
       setTimeout(() => runAutoSync("queued"), 1000);

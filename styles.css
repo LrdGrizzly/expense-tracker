@@ -75,6 +75,12 @@ button {
   font-weight: 900;
 }
 
+.brand-mark svg {
+  width: 21px;
+  height: 21px;
+  stroke-width: 2.3;
+}
+
 .brand strong {
   display: block;
   font-size: 14px;
@@ -110,10 +116,17 @@ button {
 }
 
 .icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   display: inline-grid;
   place-items: center;
+  flex: 0 0 auto;
+}
+
+.icon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.1;
 }
 
 .sidebar-status {
@@ -124,6 +137,23 @@ button {
   color: #cbd5e1;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.sidebar-status.bad {
+  background: rgba(220, 38, 38, 0.18);
+}
+
+.sidebar-status.warn {
+  background: rgba(217, 119, 6, 0.16);
+}
+
+.sidebar-status.good {
+  background: rgba(22, 163, 74, 0.16);
+}
+
+.sidebar-sync-meta {
+  margin-top: 9px;
+  color: #cbd5e1;
 }
 
 .main {
@@ -156,6 +186,86 @@ button {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.sync-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  color: currentColor;
+  flex: 0 0 auto;
+}
+
+.sync-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.2;
+}
+
+.sync-pill strong {
+  display: block;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.sync-pill small {
+  display: block;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.sync-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--muted);
+  box-shadow: 0 0 0 4px rgba(100, 116, 139, 0.12);
+  flex: 0 0 auto;
+}
+
+.sync-pill.good .sync-dot {
+  background: var(--good);
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.14);
+}
+
+.sync-pill.warn .sync-dot {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.16);
+}
+
+.sync-pill.bad .sync-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
+}
+
+.sync-pill.info .sync-dot {
+  background: var(--accent);
+  animation: pulse-sync 1s infinite;
+}
+
+@keyframes pulse-sync {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.65; }
 }
 
 .button {
@@ -461,6 +571,26 @@ tr:hover td {
   background: #f8fafc;
 }
 
+.sync-state div.sync-card-good {
+  border-color: rgba(22, 163, 74, 0.35);
+  background: #f0fdf4;
+}
+
+.sync-state div.sync-card-warn {
+  border-color: rgba(217, 119, 6, 0.35);
+  background: #fffbeb;
+}
+
+.sync-state div.sync-card-bad {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: #fef2f2;
+}
+
+.sync-state div.sync-card-info {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: #eff6ff;
+}
+
 .mobile-fab {
   display: none;
 }
@@ -497,9 +627,14 @@ tr:hover td {
   }
 
   .nav .icon {
-    width: 22px;
-    height: 22px;
-    font-size: 18px;
+    width: 24px;
+    height: 24px;
+  }
+
+  .nav .icon svg {
+    width: 24px;
+    height: 24px;
+    stroke-width: 2;
   }
 
   .main {
@@ -516,6 +651,10 @@ tr:hover td {
 
   .actions .button {
     flex: 1;
+  }
+
+  .actions .sync-pill {
+    width: 100%;
   }
 
   .cols-4,
@@ -540,7 +679,12 @@ tr:hover td {
     align-items: center;
     justify-content: center;
     box-shadow: var(--shadow);
-    font-size: 26px;
+  }
+
+  .mobile-fab svg {
+    width: 28px;
+    height: 28px;
+    stroke-width: 2.5;
   }
 
   th,
