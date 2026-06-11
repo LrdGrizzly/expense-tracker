@@ -93,13 +93,13 @@ The app now runs automatic foreground sync:
 
 To enable it:
 
-1. Open **Sync**.
-2. Paste the Google OAuth Client ID.
-3. Enter the encryption password.
+1. Open the app.
+2. Enter the tracker password on the unlock screen.
+3. If the Google OAuth Client ID is not saved yet, paste it on the unlock screen or in **Sync**.
 4. Leave **Automatic foreground sync** enabled.
 5. Set the interval, for example `3` minutes.
 6. If you want sync after reopening the app without typing the password again, enable **Remember password on this device**.
-7. Click **Save settings**.
+7. Click **Save settings** if you changed settings in **Sync**.
 8. Click **Sync now** once manually to authorize Google.
 
 Important limits:
@@ -108,6 +108,26 @@ Important limits:
 - Google can require consent again, revoke tokens, expire sessions, or block access if the OAuth project/test-user setup is wrong.
 - Silent sync needs the encryption password. If you do not remember the password locally on the device, the app cannot decrypt or upload Drive files after reopening.
 - Remembering the password stores it in that device's browser storage. Do this only on trusted devices protected by a lock screen.
+
+After unlock, autosync starts immediately. On devices where the password is remembered, launch itself is enough to unlock and schedule sync.
+
+## Updating The Installed App
+
+The app uses a service worker for offline support. After uploading new files to GitHub Pages, installed mobile/desktop PWAs can temporarily show cached files.
+
+If icons or UI changes do not appear:
+
+1. Open the GitHub Pages URL in the browser.
+2. Hard-refresh the page once.
+3. On iPhone, if the home-screen app still looks old, remove it and add it to the home screen again.
+4. Make sure the uploaded files include the latest `index.html`, `app.js`, `styles.css`, and `sw.js`.
+
+Sync status is visible in the header, sidebar, and **Sync** page:
+
+- Green means the last sync completed successfully and nothing local is waiting.
+- Blue means sync is actively running.
+- Amber means the app is offline, has never synced, is stale, or has pending local changes.
+- Red means the last sync failed. Open **Sync** and read the error card.
 
 ## Importing Dummy Data
 

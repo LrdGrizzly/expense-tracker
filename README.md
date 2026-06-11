@@ -34,6 +34,17 @@ The app uses the `drive.file` scope and encrypts ledger/sync files before upload
 
 The app can sync automatically while open or resumed. A browser PWA on iOS cannot guarantee perpetual silent background sync while fully closed, and Google OAuth can still require re-consent. For silent sync after reopening, enable **Remember password on this device** in the Sync page on trusted devices only.
 
+The app now starts with an unlock screen. The password entered there is the same password used to decrypt Drive data and perform sync. After unlock, autosync starts immediately. If **Remember password on this device** is enabled, trusted devices unlock and start syncing automatically on launch.
+
+The sync indicator appears in the page header, sidebar, and Sync page:
+
+- Green: latest sync completed and there are no local pending changes.
+- Blue: sync is currently running.
+- Amber: offline, never synced, stale, or local changes are waiting to upload.
+- Red: the last sync attempt failed. Open **Sync** to read the error and run **Sync now** after fixing it.
+
+If icons or UI updates do not appear after deployment, hard-refresh once or remove/re-add the home-screen app. The service worker cache version is bumped, and assets use versioned URLs, but old installed PWAs can show cached files until the next update cycle.
+
 ## Important Limits
 
 - CSV import is desktop-focused.

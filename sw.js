@@ -1,9 +1,9 @@
-const CACHE_NAME = "household-expense-tracker-v1";
+const CACHE_NAME = "household-expense-tracker-v2-20260611";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
+  "./styles.css?v=20260611",
+  "./app.js?v=20260611",
   "./manifest.webmanifest",
   "./icons/icon.svg"
 ];
@@ -24,14 +24,18 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        return response;
-      });
-    })
+    fetch(event.request).then((response) => {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      return response;
+    }).catch(() =>
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return caches.match("./index.html");
+      })
+    )
   );
 });

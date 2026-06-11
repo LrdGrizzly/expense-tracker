@@ -1,4 +1,4 @@
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
 const DB_NAME = "household-expense-tracker";
 const DB_VERSION = 1;
 const STORE = "kv";
@@ -132,6 +132,7 @@ let tokenClient = null;
 let importPreview = null;
 let chartFilter = null;
 let isSyncing = false;
+let appUnlocked = false;
 let autoSyncTimer = null;
 let autoSyncQueued = false;
 let lastAutoSyncMs = 0;
@@ -239,6 +240,53 @@ function syncStatusMarkup(compact = false) {
     <span class="sync-icon">${iconSvg(healthIcon)}</span><span class="sync-dot"></span>
     <span><strong>${escapeHtml(health.label)}</strong>${compact ? "" : `<small>${escapeHtml(health.detail)}</small>`}</span>
   </button>`;
+}
+
+function renderLockScreen() {
+  const hasClientId = Boolean(state.settings.googleClientId);
+  app.innerHTML = `
+    <main class="lock-screen">
+      <section class="lock-panel">
+        <div class="brand lock-brand">
+          <div class="brand-mark">${iconSvg("CircleDollarSign")}</div>
+          <div><strong>Household Ledger</strong><span>Encrypted Drive sync</span></div>
+        </div>
+        <h1>Unlock tracker</h1>
+        <p>The login password is also the encryption password used to read and sync your Drive data.</p>
+        <form id="unlock-form" class="stack">
+          <div class="field ${hasClientId ? "compact-hidden" : ""}">
+            <label>Google OAuth client ID</label>
+            <input name="googleClientId" autocomplete="username" value="${escapeHtml(state.settings.googleClientId)}" placeholder="Paste web client ID">
+          </div>
+          <div class="field">
+            <label>Tracker password</label>
+            <input name="password" type="password" autocomplete="current-password" placeholder="Enter sync/decryption password" required autofocus>
+          </div>
+          <label class="lock-check"><input name="remember" type="checkbox" ${state.settings.rememberSyncPassword ? "checked" : ""}> Remember password on this trusted device</label>
+          <button class="button primary" type="submit">Unlock and sync</button>
+        </form>
+        <div class="notice">If this password differs between desktop and mobile, Drive files cannot be decrypted and sync will show an error.</div>
+      </section>
+    </main>
+  `;
+}
+
+async function unlockTracker(form) {
+  const data = Object.fromEntries(new FormData(form));
+  const password = String(data.password || "");
+  if (!password) {
+    alert("Enter the tracker password.");
+    return;
+  }
+  encryptionPassword = password;
+  appUnlocked = true;
+  if (data.googleClientId) state.settings.googleClientId = String(data.googleClientId).trim();
+  state.settings.rememberSyncPassword = Boolean(data.remember);
+  state.settings.storedSyncPassword = state.settings.rememberSyncPassword ? encryptionPassword : "";
+  await saveState();
+  render();
+  startAutoSync();
+  scheduleAutoSync("unlock");
 }
 
 function escapeHtml(value) {
@@ -946,6 +994,10 @@ function renderSync() {
 }
 
 function render() {
+  if (!appUnlocked) {
+    renderLockScreen();
+    return;
+  }
   if (state.activeTab === "dashboard") renderDashboard();
   if (state.activeTab === "transactions") renderTransactions();
   if (state.activeTab === "import") renderImport();
@@ -1284,6 +1336,7 @@ function autoSyncReady() {
     state.settings.autoSyncEnabled &&
     state.settings.googleClientId &&
     encryptionPassword &&
+    appUnlocked &&
     navigator.onLine
   );
 }
@@ -1378,6 +1431,7 @@ document.addEventListener("click", (event) => {
 document.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
+    if (event.target.id === "unlock-form") await unlockTracker(event.target);
     if (event.target.id === "transaction-form") await addTransaction(event.target);
     if (event.target.id === "budget-form") {
       const data = Object.fromEntries(new FormData(event.target));
@@ -1470,11 +1524,14 @@ async function seedDemoData() {
 async function init() {
   db = await openDb();
   state = ensureDefaults(await dbGet("state"));
+  appUnlocked = Boolean(encryptionPassword);
   await saveState();
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register(`./sw.js?v=${APP_VERSION}`).then((registration) => registration.update()).catch(() => {});
+  }
   render();
   startAutoSync();
-  scheduleAutoSync("startup");
+  if (appUnlocked) scheduleAutoSync("startup");
   window.addEventListener("online", () => scheduleAutoSync("online"));
   window.addEventListener("focus", () => scheduleAutoSync("focus"));
   document.addEventListener("visibilitychange", () => {
